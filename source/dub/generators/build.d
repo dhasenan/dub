@@ -466,12 +466,12 @@ class BuildGenerator : ProjectGenerator {
 			      (either in the dub.json, or using a command line flag)
 		*/
 		} else if (generate_binary && (settings.buildMode == BuildMode.allAtOnce || settings.compiler.name != "dmd" || is_static_library)) {
+			// don't include symbols of dependencies (will be included by the top level target)
+			if (is_static_library) buildsettings.sourceFiles = buildsettings.sourceFiles.filter!(f => !f.isLinkerFile()).array;
+
 			// setup for command line
 			settings.compiler.setTarget(buildsettings, settings.platform);
 			settings.compiler.prepareBuildSettings(buildsettings, BuildSetting.commandLine);
-
-			// don't include symbols of dependencies (will be included by the top level target)
-			if (is_static_library) buildsettings.sourceFiles = buildsettings.sourceFiles.filter!(f => !f.isLinkerFile()).array;
 
 			// invoke the compiler
 			settings.compiler.invoke(buildsettings, settings.platform, settings.compileCallback);
@@ -564,4 +564,36 @@ private Path getMainSourceFile(in Package prj)
 private Path getTargetPath(in ref BuildSettings bs, in ref GeneratorSettings settings)
 {
 	return Path(bs.targetPath) ~ settings.compiler.getTargetFileName(bs, settings.platform);
+}
+
+
+unittest { // issue #1235 - pass no library files to compiler command line when building a static lib
+	import dub.internal.vibecompat.data.json : parseJsonString;
+	import dub.compilers.gdc : GDCCompiler;
+
+	auto desc = parseJsonString(`{"name": "test", "targetType": "library", "sourceFiles": ["foo.d", "bar.a"]}`);
+	auto pack = new Package(desc, Path("/tmp/fooproject"));
+	auto pman = new PackageManager(Path("/tmp/foo/"), Path("/tmp/foo/"), false);
+	auto prj = new Project(pman, pack);
+
+	final static class TestCompiler : GDCCompiler {
+		override void invoke(in BuildSettings settings, in BuildPlatform platform, void delegate(int, string) output_callback) {
+			assert(!settings.dflags[].any!(f => f.endsWith("bar.a")));
+		}
+		override void invokeLinker(in BuildSettings settings, in BuildPlatform platform, string[] objects, void delegate(int, string) output_callback) {
+			assert(false);
+		}
+	}
+
+	auto comp = new TestCompiler;
+
+	GeneratorSettings settings;
+	settings.platform = BuildPlatform(["linux"], ["x86"], "gdc", "test", 2075);
+	settings.compiler = new TestCompiler;
+	settings.config = "library";
+	settings.buildType = "debug";
+	settings.tempBuild = true;
+
+	auto gen = new BuildGenerator(prj);
+	gen.generate(settings);
 }
