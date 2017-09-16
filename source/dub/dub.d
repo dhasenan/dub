@@ -546,6 +546,7 @@ class Dub {
 			BuildSettingsTemplate tcinfo = m_project.rootPackage.recipe.getConfiguration(config).buildSettings;
 			tcinfo.targetType = TargetType.executable;
 			tcinfo.targetName = test_config;
+			tcinfo.dflags[""] ~= "-unittest";
 			// HACK for vibe.d's legacy main() behavior:
 			tcinfo.versions[""] ~= "VibeCustomMain";
 			m_project.rootPackage.recipe.buildSettings.versions[""] = m_project.rootPackage.recipe.buildSettings.versions.get("", null).remove!(v => v == "VibeDefaultMain");
